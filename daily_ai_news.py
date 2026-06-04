@@ -7,6 +7,8 @@ import json
 import os
 import sys
 import webbrowser
+import urllib.error
+import urllib.request
 from pathlib import Path
 from email.mime.text import MIMEText
 from email.utils import formatdate
@@ -27,15 +29,30 @@ SMTP_SERVER = os.environ.get("SMTP_SERVER", "smtp.qq.com")
 SMTP_PORT = int(os.environ.get("SMTP_PORT", "465"))
 SMTP_USE_SSL = os.environ.get("SMTP_USE_SSL", "true").lower() != "false"
 
+USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+)
+feedparser.USER_AGENT = USER_AGENT
+
+# (名称, URL, filter) — filter="ai" 时只保留标题含 AI 关键词的条目
 RSS_FEEDS = [
-    ("MIT AI", "https://www.technologyreview.com/feed/ai/"),
-    ("Hacker News (AI)", "https://hnrss.org/frontpage?q=ai"),
-    ("机器之心", "https://www.jiqizhixin.com/feed"),
-    ("量子位", "https://www.qbitai.com/feed"),
+    ("Hacker News (AI)", "https://hnrss.org/frontpage?q=ai", None),
+    ("量子位", "https://www.qbitai.com/feed", None),
+    ("Google AI", "https://blog.google/technology/ai/rss/", None),
+    ("OpenAI Blog", "https://openai.com/blog/rss.xml", None),
+    ("36氪", "https://36kr.com/feed", "ai"),
+    ("Solidot", "https://www.solidot.org/index.rss", "ai"),
 ]
 
+AI_KEYWORDS = re.compile(
+    r"AI|人工智能|大模型|机器学习|深度学习|GPT|LLM|OpenAI|Gemini|Claude|神经网络|芯片|算力",
+    re.IGNORECASE,
+)
+
 MAX_ITEMS_PER_FEED = 5
-MAX_TOTAL_ITEMS = 30
+MAX_TOTAL_ITEMS = 10
+FETCH_TIMEOUT = 25
 
 IS_CI = os.environ.get("GITHUB_ACTIONS") == "true" or os.environ.get("CI") == "true"
 
@@ -71,40 +88,86 @@ def email_config_ready(cfg):
     ))
 
 
+def download_feed(url):
+    request = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": USER_AGENT,
+            "Accept": "application/rss+xml, application/xml, text/xml, */*",
+            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+        },
+    )
+    with urllib.request.urlopen(request, timeout=FETCH_TIMEOUT) as response:
+        return response.read()
+
+
+def parse_feed(url):
+    try:
+        content = download_feed(url)
+    except urllib.error.HTTPError as e:
+        raise RuntimeError(f"HTTP {e.code}") from e
+    except Exception as e:
+        raise RuntimeError(str(e)) from e
+
+    feed = feedparser.parse(content)
+    if feed.bozo and not feed.entries:
+        raise RuntimeError(f"解析失败: {feed.bozo_exception}")
+    return feed
+
+
+def entry_matches_filter(entry, filter_mode):
+    if filter_mode != "ai":
+        return True
+    text = f"{entry.get('title', '')} {entry.get('summary', '')}"
+    return bool(AI_KEYWORDS.search(text))
+
+
+def normalize_entry(source_name, entry):
+    title = entry.get("title", "无标题")
+    link = entry.get("link", "#")
+    summary = entry.get("summary", "")
+    clean_summary = re.sub("<[^<]+?>", "", summary)
+    if len(clean_summary) > 200:
+        clean_summary = clean_summary[:200] + "…"
+
+    return {
+        "source": source_name,
+        "title": title,
+        "link": link,
+        "summary": clean_summary,
+        "published": entry.get(
+            "published",
+            datetime.now().strftime("%a, %d %b %Y %H:%M:%S GMT"),
+        ),
+    }
+
+
 def fetch_news():
     all_entries = []
     seen_hashes = set()
 
-    for source_name, feed_url in RSS_FEEDS:
+    for source_name, feed_url, filter_mode in RSS_FEEDS:
+        added = 0
         try:
-            feed = feedparser.parse(feed_url)
-            for entry in feed.entries[:MAX_ITEMS_PER_FEED]:
-                title = entry.get("title", "无标题")
-                link = entry.get("link", "#")
-                summary = entry.get("summary", "")
-                clean_summary = re.sub("<[^<]+?>", "", summary)
-                if len(clean_summary) > 200:
-                    clean_summary = clean_summary[:200] + "…"
+            feed = parse_feed(feed_url)
+            candidates = feed.entries if filter_mode != "ai" else feed.entries[:50]
+            for entry in candidates:
+                if added >= MAX_ITEMS_PER_FEED:
+                    break
+                if not entry_matches_filter(entry, filter_mode):
+                    continue
 
-                title_hash = hashlib.md5(title.encode("utf-8")).hexdigest()
+                item = normalize_entry(source_name, entry)
+                title_hash = hashlib.md5(item["title"].encode("utf-8")).hexdigest()
                 if title_hash in seen_hashes:
                     continue
                 seen_hashes.add(title_hash)
 
-                all_entries.append(
-                    {
-                        "source": source_name,
-                        "title": title,
-                        "link": link,
-                        "summary": clean_summary,
-                        "published": entry.get(
-                            "published",
-                            datetime.now().strftime("%a, %d %b %Y %H:%M:%S GMT"),
-                        ),
-                    }
-                )
+                all_entries.append(item)
+                added += 1
+            print(f"{source_name}: 获取 {added} 条")
         except Exception as e:
-            print(f"抓取 {source_name} 失败: {e}")
+            print(f"{source_name}: 失败 ({e})")
 
     all_entries.sort(key=lambda x: x["published"], reverse=True)
     return all_entries[:MAX_TOTAL_ITEMS]
