@@ -1,0 +1,10 @@
+{
+  "smtp_server": "smtp.qq.com",
+  "smtp_port": 465,
+  "smtp_use_ssl": true,
+  "sender_email": "",
+  "sender_password": "",
+  "receiver_email": "",
+  "save_local_html": true,
+  "open_in_browser": true
+}
