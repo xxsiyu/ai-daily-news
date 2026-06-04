@@ -2,7 +2,8 @@ name: Daily AI News
 
 on:
   schedule:
-    - cron: '0 12 * * *'   # UTC 12:00 = 北京时间每天 20:00
+    # 避开整点（GitHub 在整点负载高，定时任务容易被跳过）
+    - cron: '5 12 * * *'   # UTC 12:05 ≈ 北京时间每天 20:05
   workflow_dispatch:
 
 jobs:
