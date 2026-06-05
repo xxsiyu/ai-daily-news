@@ -1,10 +1,17 @@
 name: Daily AI News
 
+# GitHub 内置 schedule 对此仓库未生效，请用 cron-job.org 每天触发（见仓库说明）。
 on:
-  schedule:
-    # 避开整点（GitHub 在整点负载高，定时任务容易被跳过）
-    - cron: '5 12 * * *'   # UTC 12:05 ≈ 北京时间每天 20:05
   workflow_dispatch:
+  repository_dispatch:
+    types: [daily-news]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: daily-ai-news
+  cancel-in-progress: false
 
 jobs:
   send-news:
