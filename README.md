@@ -96,13 +96,14 @@ Fine-grained token 在 cron-job.org 上容易报 403，建议直接用 **Classic
 | Header 名称 | Header 值 |
 |---|---|
 | `User-Agent` | `ai-daily-news` |
-| `Authorization` | `Bearer 你的Token` |
+| `Authorization` | `Bearer ghp_你的Classic_Token` |
 | `Accept` | `application/vnd.github+json` |
 | `X-GitHub-Api-Version` | `2022-11-28` |
 | `Content-Type` | `application/json` |
 
 > **必填 `User-Agent`：** 没有它 GitHub 会直接 403。  
-> `Authorization` 格式：`Bearer` + 空格 + Token（Classic 是 `ghp_...`，Fine-grained 是 `github_pat_...`）。  
+> `Authorization` 填当前已验证可用的格式：`Bearer ghp_` + 你的 Classic Token（中间有空格）。  
+> Token 在 https://github.com/settings/tokens 用 **Generate new token (classic)** 创建，勾选 **`repo` + `workflow`**。  
 > **Requires HTTP authentication** 不要勾选。
 
 #### Request body
