@@ -80,16 +80,19 @@ cron-job.org（定时） → GitHub Actions → daily_ai_news.py → QQ 邮箱
 | **Request method** | `POST` |
 | **Requires HTTP authentication** | **不要勾选 / 留空** |
 
-#### Request headers（点 Add header，逐条添加 4 条）
+#### Request headers（点 Add header，逐条添加 **5** 条）
 
 | Header 名称 | Header 值 |
 |---|---|
+| `User-Agent` | `ai-daily-news` |
 | `Authorization` | `Bearer 你的GitHub_Token` |
 | `Accept` | `application/vnd.github+json` |
 | `X-GitHub-Api-Version` | `2022-11-28` |
 | `Content-Type` | `application/json` |
 
-> `Authorization` 的值格式为：`Bearer` + 空格 + Token，例如 `Bearer github_pat_xxxx...`
+> **必填 `User-Agent`：** GitHub API 要求必须带此头，否则会返回 `403 Forbidden`。  
+> `Authorization` 的值格式为：`Bearer` + 空格 + Token，例如 `Bearer github_pat_xxxx...`  
+> **Requires HTTP authentication** 不要勾选（和上面的 Authorization Header 不是一回事）。
 
 #### Request body
 
@@ -133,6 +136,27 @@ python daily_ai_news.py
 ---
 
 ## 常见问题
+
+### cron-job.org 报 Forbidden / 403？
+
+常见原因是 **缺少 `User-Agent` Header**（GitHub 强制要求）。
+
+请确认 ADVANCED → Request headers 里有这 5 条，尤其是：
+
+```
+User-Agent: ai-daily-news
+Authorization: Bearer 你的Token
+```
+
+其他检查：
+
+1. Token 是否已过期 / 被删除 → 重新生成
+2. Token 权限是否含 **Actions: Read and write**，且仓库选了 **ai-daily-news**
+3. `Authorization` 是否写成 `Bearer ` + Token（中间有空格）
+4. Request method 是否为 **POST**，Body 是否为 `{"ref":"main"}`
+5. **Requires HTTP authentication** 不要勾选
+
+成功时 cron-job.org 通常显示 **204**（无正文也正常）。
 
 ### 没收到邮件？
 
