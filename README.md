@@ -47,13 +47,24 @@ cron-job.org（定时） → GitHub Actions → daily_ai_news.py → QQ 邮箱
 
 当 cron-job.org 账号到期、任务被删、或需要在新设备上重新配置时，按本节操作即可，**无需查看聊天记录**。
 
-### 步骤 1：创建 GitHub Token
+### 步骤 1：创建 GitHub Token（推荐 Classic，更稳）
 
-1. 打开 https://github.com/settings/tokens?type=beta
-2. 点击 **Generate new token** → 选择 **Fine-grained token**
-3. **Repository access**：只勾选 **ai-daily-news**
-4. **Permissions** → **Actions** → 选择 **Read and write**
-5. 生成后 **立即复制 Token**（只显示一次，请妥善保存，不要发给他人）
+Fine-grained token 在 cron-job.org 上容易报 403，建议直接用 **Classic token**：
+
+1. 打开 https://github.com/settings/tokens
+2. 点 **Generate new token (classic)**
+3. Note 随便填，例如 `ai-daily-news-cron`
+4. Expiration 可选 `90 days` 或 `No expiration`
+5. 勾选权限：**`repo`** 和 **`workflow`**
+6. 生成后复制 Token（以 `ghp_` 开头）
+
+> 不要把 Token 发给任何人；泄露后立刻 Revoke。
+
+若坚持用 Fine-grained token，至少要：
+
+- Repository access：只选 **ai-daily-news**
+- Permissions → **Actions: Read and write**
+- Permissions → **Contents: Read and write**
 
 ### 步骤 2：注册 / 登录 cron-job.org
 
@@ -85,14 +96,14 @@ cron-job.org（定时） → GitHub Actions → daily_ai_news.py → QQ 邮箱
 | Header 名称 | Header 值 |
 |---|---|
 | `User-Agent` | `ai-daily-news` |
-| `Authorization` | `Bearer 你的GitHub_Token` |
+| `Authorization` | `Bearer 你的Token` |
 | `Accept` | `application/vnd.github+json` |
 | `X-GitHub-Api-Version` | `2022-11-28` |
 | `Content-Type` | `application/json` |
 
-> **必填 `User-Agent`：** GitHub API 要求必须带此头，否则会返回 `403 Forbidden`。  
-> `Authorization` 的值格式为：`Bearer` + 空格 + Token，例如 `Bearer github_pat_xxxx...`  
-> **Requires HTTP authentication** 不要勾选（和上面的 Authorization Header 不是一回事）。
+> **必填 `User-Agent`：** 没有它 GitHub 会直接 403。  
+> `Authorization` 格式：`Bearer` + 空格 + Token（Classic 是 `ghp_...`，Fine-grained 是 `github_pat_...`）。  
+> **Requires HTTP authentication** 不要勾选。
 
 #### Request body
 
@@ -103,11 +114,43 @@ cron-job.org（定时） → GitHub Actions → daily_ai_news.py → QQ 邮箱
 ### 步骤 4：测试
 
 1. 保存任务
-2. 点击 **Run now** 手动执行一次
-3. 打开 https://github.com/xxsiyu/ai-daily-news/actions ，应出现新的运行记录
-4. 检查 QQ 邮箱是否收到「AI 每日简报」邮件
+2. 点击 **Run now**
+3. 成功时状态码通常是 **204**
+4. 打开 https://github.com/xxsiyu/ai-daily-news/actions 应出现新运行
+5. 检查 QQ 邮箱是否收到简报
 
-测试成功即配置完成，之后每天 20:00 自动推送。
+### 备用方案：改用 repository_dispatch
+
+若上面 URL 仍 Forbidden，把 cron-job 改成：
+
+| 项 | 填写内容 |
+|---|---|
+| **URL** | `https://api.github.com/repos/xxsiyu/ai-daily-news/dispatches` |
+| **Request body** | `{"event_type":"daily-news"}` |
+
+Headers 仍用上面那 5 条不变。
+
+### 本地自检 Token（可选）
+
+在 PowerShell 中运行（把 `粘贴你的Token` 换成真实 Token，测完可关掉窗口）：
+
+```powershell
+$token = "粘贴你的Token"
+$headers = @{
+  "Authorization" = "Bearer $token"
+  "Accept" = "application/vnd.github+json"
+  "X-GitHub-Api-Version" = "2022-11-28"
+  "User-Agent" = "ai-daily-news"
+}
+Invoke-RestMethod -Method POST `
+  -Uri "https://api.github.com/repos/xxsiyu/ai-daily-news/actions/workflows/daily_ai.yml/dispatches" `
+  -Headers $headers `
+  -ContentType "application/json" `
+  -Body '{"ref":"main"}'
+```
+
+- 无报错 + Actions 有新运行 → Token 正常，问题在 cron-job.org 配置
+- 仍 401/403 → Token 权限不够或已失效，重新生成 Classic token
 
 ---
 
@@ -139,24 +182,25 @@ python daily_ai_news.py
 
 ### cron-job.org 报 Forbidden / 403？
 
-常见原因是 **缺少 `User-Agent` Header**（GitHub 强制要求）。
+按下面顺序排查：
 
-请确认 ADVANCED → Request headers 里有这 5 条，尤其是：
+1. **换 Classic Token**（最有效）  
+   https://github.com/settings/tokens → **Generate new token (classic)** → 勾选 **`repo` + `workflow`**  
+   然后把 Header 里的 `Authorization` 改成：`Bearer ghp_你的新Token`
 
-```
-User-Agent: ai-daily-news
-Authorization: Bearer 你的Token
-```
+2. **确认有 `User-Agent: ai-daily-news`**
 
-其他检查：
+3. **Requires HTTP authentication 不要勾选**
 
-1. Token 是否已过期 / 被删除 → 重新生成
-2. Token 权限是否含 **Actions: Read and write**，且仓库选了 **ai-daily-news**
-3. `Authorization` 是否写成 `Bearer ` + Token（中间有空格）
-4. Request method 是否为 **POST**，Body 是否为 `{"ref":"main"}`
-5. **Requires HTTP authentication** 不要勾选
+4. **改用备用 URL / Body：**
+   - URL：`https://api.github.com/repos/xxsiyu/ai-daily-news/dispatches`
+   - Body：`{"event_type":"daily-news"}`
 
-成功时 cron-job.org 通常显示 **204**（无正文也正常）。
+5. **用 README「本地自检 Token」验证**  
+   - 本地成功、cron 失败 → 检查 cron 的 Header/Body 是否抄错  
+   - 本地也 403 → Token 权限问题
+
+成功时 cron-job.org 通常显示 **204**。
 
 ### 没收到邮件？
 
